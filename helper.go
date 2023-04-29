@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	jgstr "github.com/Jinglever/go-string"
 	"gorm.io/gorm"
 )
 
@@ -65,14 +64,23 @@ func (h *Helper) QueryAllTables() ([]string, error) {
 // query create table sql
 func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 	var buf strings.Builder
+	var table map[string]interface{}
+	err := h.DB.Raw(fmt.Sprintf("select cast(obj_description(relfilenode,'pg_class') as varchar) as comment from pg_class c where relname ='%s';", tableName)).Scan(&table).Error
+	if err != nil {
+		return "", err
+	}
+	if len(table) == 0 {
+		return "", fmt.Errorf("table %s not exists", tableName)
+	}
+	tableComment := getString(table["comment"])
 	var cols = make([]map[string]interface{}, 0)
-	err := h.DB.Raw(fmt.Sprintf("SELECT ordinal_position,column_name,udt_name AS data_type,numeric_precision,datetime_precision,numeric_scale,character_maximum_length AS data_length,is_nullable,column_name as check,column_name as check_constraint,column_default,column_name AS foreign_key,pg_catalog.col_description((select oid from pg_class where relname='%s'),ordinal_position) as comment FROM information_schema.columns WHERE table_name='%s'AND table_schema='public'", tableName, tableName)).Scan(&cols).Error
+	err = h.DB.Raw(fmt.Sprintf("SELECT ordinal_position,column_name,udt_name AS data_type,numeric_precision,datetime_precision,numeric_scale,character_maximum_length AS data_length,is_nullable,column_name as check,column_name as check_constraint,column_default,column_name AS foreign_key,pg_catalog.col_description((select oid from pg_class where relname='%s'),ordinal_position) as comment FROM information_schema.columns WHERE table_name='%s'AND table_schema='public'", tableName, tableName)).Scan(&cols).Error
 	if err != nil || len(cols) == 0 {
 		return "", err
 	}
 	var colName2Col = make(map[string]map[string]interface{})
 	for _, col := range cols {
-		fmt.Printf("%#v\n", jgstr.JsonEncode(col))
+		// fmt.Printf("%#v\n", jgstr.JsonEncode(col))
 		colName2Col[col["column_name"].(string)] = col
 	}
 	var indexes = make([]map[string]interface{}, 0)
@@ -82,13 +90,15 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 	}
 	var indexName2Index = make(map[string]map[string]interface{})
 	for _, index := range indexes {
-		fmt.Printf("%#v\n", jgstr.JsonEncode(index))
+		// fmt.Printf("%#v\n", jgstr.JsonEncode(index))
 		indexName2Index[index["index_name"].(string)] = index
 	}
 	pkey := ""
 	if _, ok := indexName2Index[tableName+"_pkey"]; ok {
 		pkey = indexName2Index[tableName+"_pkey"]["column_name"].(string)
 	}
+
+	// create table
 	buf.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", tableName))
 	for idx, col := range cols {
 		parts := make([]string, 0)
@@ -100,6 +110,25 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 			typ = convertInteger2Serial(typ)
 			dft = ""
 		}
+
+		// for decimal type, consider numeric_precision and numeric_scale
+		if typ == t_decimal {
+			precision := getInt(col["numeric_precision"])
+			scale := getInt(col["numeric_scale"])
+			if precision > 0 && scale > 0 {
+				typ = fmt.Sprintf("%s(%d,%d)", typ, precision, scale)
+			} else if precision > 0 {
+				typ = fmt.Sprintf("%s(%d)", typ, precision)
+			}
+		}
+		// for varchar and char type, consider character_maximum_length
+		if typ == t_varchar || typ == t_char {
+			length := getInt(col["data_length"])
+			if length > 0 {
+				typ = fmt.Sprintf("%s(%d)", typ, length)
+			}
+		}
+
 		parts = append(parts, strings.ToUpper(typ))
 		attr := ""
 		if colName == pkey {
@@ -121,6 +150,40 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		}
 	}
 	buf.WriteString(");\n")
+	// create index
+	for _, index := range indexes {
+		indexName := getString(index["index_name"])
+		indexAlgorithm := getString(index["index_algorithm"])
+		isUnique := getString(index["is_unique"])
+		columnName := getString(index["column_name"])
+		if indexName == tableName+"_pkey" {
+			continue
+		}
+		if indexAlgorithm == "BTREE" {
+			if isUnique == "true" {
+				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX ON %s USING BTREE (%s);\n", tableName, columnName))
+			} else {
+				buf.WriteString(fmt.Sprintf("CREATE INDEX ON %s USING BTREE (%s);\n", tableName, columnName))
+			}
+		} else if indexAlgorithm == "HASH" {
+			if isUnique == "true" {
+				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX ON %s USING HASH (%s);\n", tableName, columnName))
+			} else {
+				buf.WriteString(fmt.Sprintf("CREATE INDEX ON %s USING HASH (%s);\n", tableName, columnName))
+			}
+		}
+	}
+	// comment
+	if tableComment != "" {
+		buf.WriteString(fmt.Sprintf("COMMENT ON TABLE %s IS '%s';\n", tableName, tableComment))
+	}
+	for _, col := range cols {
+		colName := getString(col["column_name"])
+		colComment := getString(col["comment"])
+		if colComment != "" {
+			buf.WriteString(fmt.Sprintf("COMMENT ON COLUMN %s.%s IS '%s';\n", tableName, colName, colComment))
+		}
+	}
 	return buf.String(), nil
 }
 
@@ -128,6 +191,14 @@ func getString(in interface{}) string {
 	r, ok := in.(string)
 	if !ok {
 		r = ""
+	}
+	return r
+}
+
+func getInt(in interface{}) int {
+	r, ok := in.(int)
+	if !ok {
+		r = 0
 	}
 	return r
 }
@@ -149,7 +220,7 @@ const (
 	t_date        = "date"
 	t_time        = "time"
 	t_timestamp   = "timestamp"
-	t_boolen      = "boolen"
+	t_bool        = "bool"
 )
 
 func convertInteger2Serial(typ string) string {
@@ -217,11 +288,7 @@ func getColumnType(typ string) string {
 		return t_timestamp
 	// 布尔类型
 	case "boolean":
-		return t_boolen
+		return t_bool
 	}
 	return typ
-}
-
-func wrapLength(typ string, length int) string {
-	return ""
 }
