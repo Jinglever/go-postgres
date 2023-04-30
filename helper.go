@@ -166,14 +166,13 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		}
 	}
 	// foreign key
-	if len(constraints) == 0 {
-		buf.WriteString("\n")
-	} else {
+	if len(constraints) > 0 {
 		for _, cst := range constraints {
-			buf.WriteString(fmt.Sprintf(",\n  %s", getString(cst["pg_get_constraintdef"])))
+			key := getString(cst["foreign_key"])
+			buf.WriteString(fmt.Sprintf(",\n  CONSTRAINT %s %s", key, getString(cst["pg_get_constraintdef"])))
 		}
 	}
-	buf.WriteString(");\n")
+	buf.WriteString("\n);\n")
 	// create index
 	for _, index := range indexes {
 		indexName := getString(index["index_name"])
@@ -185,16 +184,18 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		}
 		if indexAlgorithm == "BTREE" {
 			if isUnique == "true" {
-				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX ON %s USING BTREE (%s);\n", tableName, columnName))
+				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s USING BTREE (%s);\n", indexName, tableName, columnName))
 			} else {
-				buf.WriteString(fmt.Sprintf("CREATE INDEX ON %s USING BTREE (%s);\n", tableName, columnName))
+				buf.WriteString(fmt.Sprintf("CREATE INDEX %s ON %s USING BTREE (%s);\n", indexName, tableName, columnName))
 			}
 		} else if indexAlgorithm == "HASH" {
 			if isUnique == "true" {
-				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX ON %s USING HASH (%s);\n", tableName, columnName))
+				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s USING HASH (%s);\n", indexName, tableName, columnName))
 			} else {
-				buf.WriteString(fmt.Sprintf("CREATE INDEX ON %s USING HASH (%s);\n", tableName, columnName))
+				buf.WriteString(fmt.Sprintf("CREATE INDEX %s ON %s USING HASH (%s);\n", indexName, tableName, columnName))
 			}
+		} else {
+			return "", fmt.Errorf("unsupported index algorithm: %s", indexAlgorithm)
 		}
 	}
 	// comment
@@ -220,7 +221,6 @@ func getString(in interface{}) string {
 }
 
 func getInt32(in interface{}) int32 {
-	fmt.Printf("getInt: %T\n", in)
 	r, ok := in.(int32)
 	if !ok {
 		r = 0
