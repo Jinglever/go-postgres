@@ -65,7 +65,8 @@ func (h *Helper) QueryAllTables() ([]string, error) {
 func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 	var buf strings.Builder
 	var table map[string]interface{}
-	err := h.DB.Raw(fmt.Sprintf("select cast(obj_description(relfilenode,'pg_class') as varchar) as comment from pg_class c where relname ='%s';", tableName)).Scan(&table).Error
+	err := h.DB.Raw(fmt.Sprintf("select cast(obj_description(relfilenode,'pg_class') as varchar) as comment"+
+		" from pg_class c where relname ='%s';", tableName)).Scan(&table).Error
 	if err != nil {
 		return "", err
 	}
@@ -74,29 +75,46 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 	}
 	tableComment := getString(table["comment"])
 	var cols = make([]map[string]interface{}, 0)
-	err = h.DB.Raw(fmt.Sprintf("SELECT ordinal_position,column_name,udt_name AS data_type,numeric_precision,datetime_precision,numeric_scale,character_maximum_length AS data_length,is_nullable,column_name as check,column_name as check_constraint,column_default,column_name AS foreign_key,pg_catalog.col_description((select oid from pg_class where relname='%s'),ordinal_position) as comment FROM information_schema.columns WHERE table_name='%s'AND table_schema='public'", tableName, tableName)).Scan(&cols).Error
+	err = h.DB.Raw(fmt.Sprintf("SELECT ordinal_position,column_name,udt_name AS data_type,numeric_precision,"+
+		"datetime_precision,numeric_scale,character_maximum_length AS data_length,is_nullable,column_name as check,"+
+		"column_name as check_constraint,column_default,column_name AS foreign_key,"+
+		"pg_catalog.col_description((select oid from pg_class where relname='%s'),ordinal_position) as comment"+
+		" FROM information_schema.columns WHERE table_name='%s'AND table_schema='public'", tableName, tableName)).Scan(&cols).Error
 	if err != nil || len(cols) == 0 {
 		return "", err
 	}
 	var colName2Col = make(map[string]map[string]interface{})
 	for _, col := range cols {
-		// fmt.Printf("%#v\n", jgstr.JsonEncode(col))
+		// fmt.Printf("\n%#v\n", col)
 		colName2Col[col["column_name"].(string)] = col
 	}
 	var indexes = make([]map[string]interface{}, 0)
-	err = h.DB.Raw(fmt.Sprintf("SELECT ix.relname as index_name, upper(am.amname) AS index_algorithm, indisunique as is_unique, pg_get_indexdef(indexrelid) as index_definition, replace(regexp_replace(regexp_replace(pg_get_indexdef(indexrelid), ' WHERE .+', ''), '.*\\((.*)\\)', '\\1'), ' ', '') as column_name, CASE WHEN position(' WHERE 'in pg_get_indexdef(indexrelid))>0 THEN regexp_replace(pg_get_indexdef(indexrelid),'.+WHERE ','')ELSE''END AS condition,pg_catalog.obj_description(i.indexrelid,'pg_class')as comment FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_class ix ON ix.oid = i.indexrelid JOIN pg_namespace n ON t.relnamespace = n.oid JOIN pg_am as am ON ix.relam = am.oid WHERE t.relname = '%s' AND n.nspname = 'public';", tableName)).Scan(&indexes).Error
+	err = h.DB.Raw(fmt.Sprintf("SELECT ix.relname as index_name, upper(am.amname) AS index_algorithm, indisunique as is_unique,"+
+		" pg_get_indexdef(indexrelid) as index_definition, replace(regexp_replace(regexp_replace(pg_get_indexdef(indexrelid), ' WHERE .+', ''),"+
+		" '.*\\((.*)\\)', '\\1'), ' ', '') as column_name, CASE WHEN position(' WHERE 'in pg_get_indexdef(indexrelid))>0 THEN"+
+		" regexp_replace(pg_get_indexdef(indexrelid),'.+WHERE ','')ELSE''END AS condition,pg_catalog.obj_description(i.indexrelid,'pg_class')as comment"+
+		" FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_class ix ON ix.oid = i.indexrelid JOIN pg_namespace n ON t.relnamespace = n.oid"+
+		" JOIN pg_am as am ON ix.relam = am.oid WHERE t.relname = '%s' AND n.nspname = 'public';", tableName)).Scan(&indexes).Error
 	if err != nil {
 		return "", err
 	}
 	var indexName2Index = make(map[string]map[string]interface{})
 	for _, index := range indexes {
-		// fmt.Printf("%#v\n", jgstr.JsonEncode(index))
+		// fmt.Printf("\n%#v\n", index)
 		indexName2Index[index["index_name"].(string)] = index
 	}
 	pkey := ""
 	if _, ok := indexName2Index[tableName+"_pkey"]; ok {
 		pkey = indexName2Index[tableName+"_pkey"]["column_name"].(string)
 	}
+	var constraints = make([]map[string]interface{}, 0)
+	err = h.DB.Raw(fmt.Sprintf("SELECT conname AS foreign_key, pg_get_constraintdef (c.oid)"+
+		" FROM pg_constraint c WHERE contype = 'f' AND connamespace = 'public' ::regnamespace AND conrelid = '%s'::regclass"+
+		" ORDER BY conrelid::regclass:: text, contype DESC;", tableName)).Scan(&constraints).Error
+	if err != nil {
+		return "", err
+	}
+	// fmt.Println(constraints)
 
 	// create table
 	buf.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", tableName))
@@ -112,9 +130,9 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		}
 
 		// for decimal type, consider numeric_precision and numeric_scale
-		if typ == t_decimal {
-			precision := getInt(col["numeric_precision"])
-			scale := getInt(col["numeric_scale"])
+		if typ == CT_DECIMAL {
+			precision := getInt32(col["numeric_precision"])
+			scale := getInt32(col["numeric_scale"])
 			if precision > 0 && scale > 0 {
 				typ = fmt.Sprintf("%s(%d,%d)", typ, precision, scale)
 			} else if precision > 0 {
@@ -122,14 +140,14 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 			}
 		}
 		// for varchar and char type, consider character_maximum_length
-		if typ == t_varchar || typ == t_char {
-			length := getInt(col["data_length"])
+		if typ == CT_VARCHAR || typ == CT_CHAR {
+			length := getInt32(col["data_length"])
 			if length > 0 {
 				typ = fmt.Sprintf("%s(%d)", typ, length)
 			}
 		}
 
-		parts = append(parts, strings.ToUpper(typ))
+		parts = append(parts, typ)
 		attr := ""
 		if colName == pkey {
 			attr = "PRIMARY KEY"
@@ -143,10 +161,16 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 			parts = append(parts, "DEFAULT "+dft)
 		}
 		buf.WriteString("  " + strings.Join(parts, " "))
-		if idx == len(cols)-1 {
-			buf.WriteString("\n")
-		} else {
+		if idx != len(cols)-1 {
 			buf.WriteString(",\n")
+		}
+	}
+	// foreign key
+	if len(constraints) == 0 {
+		buf.WriteString("\n")
+	} else {
+		for _, cst := range constraints {
+			buf.WriteString(fmt.Sprintf(",\n  %s", getString(cst["pg_get_constraintdef"])))
 		}
 	}
 	buf.WriteString(");\n")
@@ -195,8 +219,9 @@ func getString(in interface{}) string {
 	return r
 }
 
-func getInt(in interface{}) int {
-	r, ok := in.(int)
+func getInt32(in interface{}) int32 {
+	fmt.Printf("getInt: %T\n", in)
+	r, ok := in.(int32)
 	if !ok {
 		r = 0
 	}
@@ -205,32 +230,32 @@ func getInt(in interface{}) int {
 
 const (
 	// 数值类型
-	t_smallint    = "smallint"
-	t_int         = "int"
-	t_bigint      = "bigint"
-	t_decimal     = "decimal"
-	t_float       = "float"
-	t_double      = "double"
-	t_smallserial = "smallserial"
-	t_serial      = "serial"
-	t_bigserial   = "bigserial"
-	t_text        = "text"
-	t_char        = "char"
-	t_varchar     = "varchar"
-	t_date        = "date"
-	t_time        = "time"
-	t_timestamp   = "timestamp"
-	t_bool        = "bool"
+	CT_SMALLINT    = "SMALLINT"
+	CT_INT         = "INT"
+	CT_BIGINT      = "BIGINT"
+	CT_DECIMAL     = "DECIMAL"
+	CT_FLOAT       = "FLOAT"
+	CT_DOUBLE      = "DOUBLE"
+	CT_SMALLSERIAL = "SMALLSERIAL"
+	CT_SERIAL      = "SERIAL"
+	CT_BIGSERIAL   = "BIGSERIAL"
+	CT_TEXT        = "TEXT"
+	CT_CHAR        = "CHAR"
+	CT_VARCHAR     = "VARCHAR"
+	CT_DATE        = "DATE"
+	CT_TIME        = "TIME"
+	CT_TIMESTAMP   = "TIMESTAMP"
+	CT_BOOL        = "BOOL"
 )
 
 func convertInteger2Serial(typ string) string {
 	switch typ {
-	case t_smallint:
-		return t_smallserial
-	case t_int:
-		return t_serial
-	case t_bigint:
-		return t_bigserial
+	case CT_SMALLINT:
+		return CT_SMALLSERIAL
+	case CT_INT:
+		return CT_SERIAL
+	case CT_BIGINT:
+		return CT_BIGSERIAL
 	default:
 		return typ
 	}
@@ -241,54 +266,54 @@ func getColumnType(typ string) string {
 	switch typ {
 	// 数值类型
 	case "int2":
-		return t_smallint
+		return CT_SMALLINT
 	case "integer":
-		return t_int
+		return CT_INT
 	case "int4":
-		return t_int
+		return CT_INT
 	case "int8":
-		return t_bigint
+		return CT_BIGINT
 	case "numeric":
-		return t_decimal
+		return CT_DECIMAL
 	case "money":
-		return t_decimal
+		return CT_DECIMAL
 	case "real":
-		return t_float
+		return CT_FLOAT
 	case "float4":
-		return t_float
+		return CT_FLOAT
 	case "float8":
-		return t_float
+		return CT_FLOAT
 	case "double precision":
-		return t_double
+		return CT_DOUBLE
 	case "smallserial":
-		return t_smallserial
+		return CT_SMALLSERIAL
 	case "serial":
-		return t_serial
+		return CT_SERIAL
 	case "bigserial":
-		return t_bigserial
+		return CT_BIGSERIAL
 	// 字符类型
 	case "text":
-		return t_text
+		return CT_TEXT
 	case "character":
-		return t_char
+		return CT_CHAR
 	case "bpchar":
-		return t_char
+		return CT_CHAR
 	case "character varying":
-		return t_varchar
+		return CT_VARCHAR
 	// 日期/时间类型
 	case "date":
-		return t_date
+		return CT_DATE
 	case "time with time zone":
-		return t_time
+		return CT_TIME
 	case "time without time zone":
-		return t_time
+		return CT_TIME
 	case "timestamp with time zone":
-		return t_timestamp
+		return CT_TIMESTAMP
 	case "timestamp without time zone":
-		return t_timestamp
+		return CT_TIMESTAMP
 	// 布尔类型
 	case "boolean":
-		return t_bool
+		return CT_BOOL
 	}
 	return typ
 }
