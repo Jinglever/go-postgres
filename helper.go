@@ -133,10 +133,8 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		if typ == CT_DECIMAL {
 			precision := getInt32(col["numeric_precision"])
 			scale := getInt32(col["numeric_scale"])
-			if precision > 0 && scale > 0 {
+			if precision > 0 {
 				typ = fmt.Sprintf("%s(%d,%d)", typ, precision, scale)
-			} else if precision > 0 {
-				typ = fmt.Sprintf("%s(%d)", typ, precision)
 			}
 		}
 		// for varchar and char type, consider character_maximum_length
@@ -176,27 +174,10 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 	// create index
 	for _, index := range indexes {
 		indexName := getString(index["index_name"])
-		indexAlgorithm := getString(index["index_algorithm"])
-		isUnique := getString(index["is_unique"])
-		columnName := getString(index["column_name"])
 		if indexName == tableName+"_pkey" {
 			continue
 		}
-		if indexAlgorithm == "BTREE" {
-			if isUnique == "true" {
-				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s USING BTREE (%s);\n", indexName, tableName, columnName))
-			} else {
-				buf.WriteString(fmt.Sprintf("CREATE INDEX %s ON %s USING BTREE (%s);\n", indexName, tableName, columnName))
-			}
-		} else if indexAlgorithm == "HASH" {
-			if isUnique == "true" {
-				buf.WriteString(fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s USING HASH (%s);\n", indexName, tableName, columnName))
-			} else {
-				buf.WriteString(fmt.Sprintf("CREATE INDEX %s ON %s USING HASH (%s);\n", indexName, tableName, columnName))
-			}
-		} else {
-			return "", fmt.Errorf("unsupported index algorithm: %s", indexAlgorithm)
-		}
+		buf.WriteString(getString(index["index_definition"]) + ";\n")
 	}
 	// comment
 	if tableComment != "" {

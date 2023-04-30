@@ -86,7 +86,7 @@ func TestQueryAllTables(t *testing.T) {
 func TestQueryCreateTableSql(t *testing.T) {
 	db := openDB()
 	helper := jgpg.NewHelper(db)
-	sql, err := helper.QueryCreateTableSql("baseline")
+	sql, err := helper.QueryCreateTableSql("load_meta_data")
 	if err != nil {
 		t.Errorf("query create table sql failed, err: %v", err)
 	} else {
