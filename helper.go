@@ -243,24 +243,36 @@ func getColumnType(typ string) string {
 	typ = strings.ToLower(typ)
 	switch typ {
 	// 数值类型
+	case "smallint":
+		return CT_SMALLINT
 	case "int2":
 		return CT_SMALLINT
+	case "int":
+		return CT_INT
 	case "integer":
 		return CT_INT
 	case "int4":
 		return CT_INT
+	case "bigint":
+		return CT_BIGINT
 	case "int8":
 		return CT_BIGINT
+	case "decimal":
+		return CT_DECIMAL
 	case "numeric":
 		return CT_DECIMAL
 	case "money":
 		return CT_DECIMAL
+	case "float":
+		return CT_FLOAT
 	case "real":
 		return CT_FLOAT
 	case "float4":
 		return CT_FLOAT
 	case "float8":
 		return CT_FLOAT
+	case "double":
+		return CT_DOUBLE
 	case "double precision":
 		return CT_DOUBLE
 	case "smallserial": // 弃用
@@ -272,24 +284,34 @@ func getColumnType(typ string) string {
 	// 字符类型
 	case "text":
 		return CT_TEXT
+	case "char":
+		return CT_CHAR
 	case "character":
 		return CT_CHAR
 	case "bpchar":
 		return CT_CHAR
+	case "varchar":
+		return CT_VARCHAR
 	case "character varying":
 		return CT_VARCHAR
 	// 日期/时间类型
 	case "date":
 		return CT_DATE
+	case "time":
+		return CT_TIME
 	case "time with time zone":
 		return CT_TIME
 	case "time without time zone":
 		return CT_TIME
+	case "timestamp":
+		return CT_TIMESTAMP
 	case "timestamp with time zone":
 		return CT_TIMESTAMP
 	case "timestamp without time zone":
 		return CT_TIMESTAMP
 	// 布尔类型
+	case "bool":
+		return CT_BOOL
 	case "boolean":
 		return CT_BOOL
 	}
