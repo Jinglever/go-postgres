@@ -2,6 +2,7 @@ package jgpg
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"gorm.io/gorm"
@@ -63,7 +64,10 @@ func (h *Helper) QueryAllTables() ([]string, error) {
 
 // query create table sql
 func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
-	var buf strings.Builder
+	var (
+		buf         strings.Builder
+		bufCreateTB strings.Builder
+	)
 	var table map[string]interface{}
 	err := h.DB.Raw(fmt.Sprintf("select cast(obj_description(relfilenode,'pg_class') as varchar) as comment"+
 		" from pg_class c where relname ='%s';", tableName)).Scan(&table).Error
@@ -116,17 +120,23 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 	}
 	// fmt.Println(constraints)
 
+	// nextval('baseline_id_seq'::regclass)
+	r1, _ := regexp.Compile(`nextval\('(.*)'::regclass\)`)
+
 	// create table
-	buf.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", tableName))
+	bufCreateTB.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", tableName))
 	for idx, col := range cols {
 		parts := make([]string, 0)
 		colName := getString(col["column_name"])
 		parts = append(parts, colName)
 		dft := getString(col["column_default"])
 		typ := getColumnType(getString(col["data_type"]))
-		if strings.Contains(dft, "_seq'::regclass") {
-			typ = convertInteger2Serial(typ)
-			dft = ""
+		if strings.Contains(dft, "'::regclass") {
+			matches := r1.FindStringSubmatch(dft)
+			if len(matches) == 2 {
+				// create sequence
+				buf.WriteString(fmt.Sprintf("CREATE SEQUENCE %s;\n", matches[1]))
+			}
 		}
 
 		// for decimal type, consider numeric_precision and numeric_scale
@@ -158,11 +168,14 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		if dft != "" {
 			parts = append(parts, "DEFAULT "+dft)
 		}
-		buf.WriteString("  " + strings.Join(parts, " "))
+		bufCreateTB.WriteString("  " + strings.Join(parts, " "))
 		if idx != len(cols)-1 {
-			buf.WriteString(",\n")
+			bufCreateTB.WriteString(",\n")
 		}
 	}
+	buf.WriteString(bufCreateTB.String())
+	bufCreateTB.Reset()
+
 	// foreign key
 	if len(constraints) > 0 {
 		for _, cst := range constraints {
@@ -211,36 +224,20 @@ func getInt32(in interface{}) int32 {
 
 const (
 	// 数值类型
-	CT_SMALLINT    = "SMALLINT"
-	CT_INT         = "INT"
-	CT_BIGINT      = "BIGINT"
-	CT_DECIMAL     = "DECIMAL"
-	CT_FLOAT       = "FLOAT"
-	CT_DOUBLE      = "DOUBLE"
-	CT_SMALLSERIAL = "SMALLSERIAL"
-	CT_SERIAL      = "SERIAL"
-	CT_BIGSERIAL   = "BIGSERIAL"
-	CT_TEXT        = "TEXT"
-	CT_CHAR        = "CHAR"
-	CT_VARCHAR     = "VARCHAR"
-	CT_DATE        = "DATE"
-	CT_TIME        = "TIME"
-	CT_TIMESTAMP   = "TIMESTAMP"
-	CT_BOOL        = "BOOL"
+	CT_SMALLINT  = "SMALLINT"
+	CT_INT       = "INT"
+	CT_BIGINT    = "BIGINT"
+	CT_DECIMAL   = "DECIMAL"
+	CT_FLOAT     = "FLOAT"
+	CT_DOUBLE    = "DOUBLE"
+	CT_TEXT      = "TEXT"
+	CT_CHAR      = "CHAR"
+	CT_VARCHAR   = "VARCHAR"
+	CT_DATE      = "DATE"
+	CT_TIME      = "TIME"
+	CT_TIMESTAMP = "TIMESTAMP"
+	CT_BOOL      = "BOOL"
 )
-
-func convertInteger2Serial(typ string) string {
-	switch typ {
-	case CT_SMALLINT:
-		return CT_SMALLSERIAL
-	case CT_INT:
-		return CT_SERIAL
-	case CT_BIGINT:
-		return CT_BIGSERIAL
-	default:
-		return typ
-	}
-}
 
 func getColumnType(typ string) string {
 	typ = strings.ToLower(typ)
@@ -266,12 +263,12 @@ func getColumnType(typ string) string {
 		return CT_FLOAT
 	case "double precision":
 		return CT_DOUBLE
-	case "smallserial":
-		return CT_SMALLSERIAL
-	case "serial":
-		return CT_SERIAL
-	case "bigserial":
-		return CT_BIGSERIAL
+	case "smallserial": // 弃用
+		return CT_SMALLINT
+	case "serial": // 弃用
+		return CT_INT
+	case "bigserial": // 弃用
+		return CT_BIGINT
 	// 字符类型
 	case "text":
 		return CT_TEXT
