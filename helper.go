@@ -131,7 +131,7 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		parts = append(parts, colName)
 		dft := getString(col["column_default"])
 		typ := getColumnType(getString(col["data_type"]))
-		if strings.Contains(dft, "'::regclass") {
+		if strings.Contains(dft, "_seq'::") {
 			matches := r1.FindStringSubmatch(dft)
 			if len(matches) == 2 {
 				// create sequence
