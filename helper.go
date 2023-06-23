@@ -69,7 +69,7 @@ func (h *Helper) QueryCreateTableSql(tableName string) (string, error) {
 		bufCreateTB strings.Builder
 	)
 	var table map[string]interface{}
-	err := h.DB.Raw(fmt.Sprintf("select cast(obj_description(relfilenode,'pg_class') as varchar) as comment"+
+	err := h.DB.Raw(fmt.Sprintf("select cast(obj_description(oid,'pg_class') as varchar) as comment"+
 		" from pg_class c where relname ='%s';", tableName)).Scan(&table).Error
 	if err != nil {
 		return "", err
