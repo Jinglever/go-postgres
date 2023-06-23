@@ -223,7 +223,7 @@ func getInt32(in interface{}) int32 {
 }
 
 const (
-	// 数值类型
+	// 字段类型
 	CT_SMALLINT  = "SMALLINT"
 	CT_INT       = "INT"
 	CT_BIGINT    = "BIGINT"
@@ -233,6 +233,8 @@ const (
 	CT_TEXT      = "TEXT"
 	CT_CHAR      = "CHAR"
 	CT_VARCHAR   = "VARCHAR"
+	CT_JSON      = "JSON"
+	CT_JSONB     = "JSONB"
 	CT_DATE      = "DATE"
 	CT_TIME      = "TIME"
 	CT_TIMESTAMP = "TIMESTAMP"
@@ -294,6 +296,10 @@ func getColumnType(typ string) string {
 		return CT_VARCHAR
 	case "character varying":
 		return CT_VARCHAR
+	case "json":
+		return CT_JSON
+	case "jsonb":
+		return CT_JSONB
 	// 日期/时间类型
 	case "date":
 		return CT_DATE
