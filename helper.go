@@ -224,21 +224,23 @@ func getInt32(in interface{}) int32 {
 
 const (
 	// 字段类型
-	CT_SMALLINT  = "SMALLINT"
-	CT_INT       = "INT"
-	CT_BIGINT    = "BIGINT"
-	CT_DECIMAL   = "DECIMAL"
-	CT_FLOAT     = "FLOAT"
-	CT_DOUBLE    = "DOUBLE"
-	CT_TEXT      = "TEXT"
-	CT_CHAR      = "CHAR"
-	CT_VARCHAR   = "VARCHAR"
-	CT_JSON      = "JSON"
-	CT_JSONB     = "JSONB"
-	CT_DATE      = "DATE"
-	CT_TIME      = "TIME"
-	CT_TIMESTAMP = "TIMESTAMP"
-	CT_BOOL      = "BOOL"
+	CT_SMALLINT    = "SMALLINT"
+	CT_INT         = "INT"
+	CT_BIGINT      = "BIGINT"
+	CT_DECIMAL     = "DECIMAL"
+	CT_FLOAT       = "FLOAT"
+	CT_DOUBLE      = "DOUBLE"
+	CT_TEXT        = "TEXT"
+	CT_CHAR        = "CHAR"
+	CT_VARCHAR     = "VARCHAR"
+	CT_JSON        = "JSON"
+	CT_JSONB       = "JSONB"
+	CT_DATE        = "DATE"
+	CT_TIME        = "TIME"
+	CT_TIMESTAMP   = "TIMESTAMP"
+	CT_BOOL        = "BOOL"
+	CT_TIMETZ      = "TIMETZ"
+	CT_TIMESTAMPTZ = "TIMESTAMPTZ"
 )
 
 func getColumnType(typ string) string {
@@ -305,16 +307,20 @@ func getColumnType(typ string) string {
 		return CT_DATE
 	case "time":
 		return CT_TIME
-	case "time with time zone":
-		return CT_TIME
 	case "time without time zone":
 		return CT_TIME
 	case "timestamp":
 		return CT_TIMESTAMP
-	case "timestamp with time zone":
-		return CT_TIMESTAMP
 	case "timestamp without time zone":
 		return CT_TIMESTAMP
+	case "timetz":
+		return CT_TIMETZ
+	case "time with time zone":
+		return CT_TIMETZ
+	case "timestamptz":
+		return CT_TIMESTAMPTZ
+	case "timestamp with time zone":
+		return CT_TIMESTAMPTZ
 	// 布尔类型
 	case "bool":
 		return CT_BOOL
