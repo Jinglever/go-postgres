@@ -241,6 +241,7 @@ const (
 	CT_BOOL        = "BOOL"
 	CT_TIMETZ      = "TIMETZ"
 	CT_TIMESTAMPTZ = "TIMESTAMPTZ"
+	CT_BYTEA       = "BYTEA"
 )
 
 func getColumnType(typ string) string {
@@ -326,6 +327,10 @@ func getColumnType(typ string) string {
 		return CT_BOOL
 	case "boolean":
 		return CT_BOOL
+	// 二进制类型
+	case "bytea":
+		return CT_BYTEA
 	}
+
 	return typ
 }
